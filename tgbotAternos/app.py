@@ -1,20 +1,18 @@
 import os
-import asyncio
 import logging
-from flask import Flask, request, jsonify
+from flask import Flask, request
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
 # --- Настройка логирования ---
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLoggerт(__name__)
 
 # --- Конфигурация ---
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 if not TOKEN:
     raise ValueError("TELEGRAM_TOKEN не найден!")
 
-# URL вашего сервиса (замените на свой, если нужно)
 BASE_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://aternos-tg-bot-8n19.onrender.com")
 WEBHOOK_PATH = f"/webhook/{TOKEN}"
 WEBHOOK_URL = BASE_URL + WEBHOOK_PATH
@@ -49,22 +47,36 @@ def health():
     return "OK"
 
 @app.route(WEBHOOK_PATH, methods=["POST"])
-async def webhook():
-    """Telegram отправляет обновления сюда"""
+def webhook():
+    """Telegram отправляет обновления сюда (синхронная версия)"""
     try:
-        update_data = await request.get_json()
+        # Получаем данные от Telegram
+        update_data = request.get_json()
         logger.info(f"📨 Получено обновление от Telegram")
+        
+        # Создаём объект Update и обрабатываем его
         update = types.Update(**update_data)
-        await dp.feed_update(bot, update)
+        
+        # Синхронная обработка: запускаем обработчики вручную
+        import asyncio
+        async def process_update():
+            await dp.feed_update(bot, update)
+        
+        # Запускаем асинхронную обработку в синхронном контексте
+        asyncio.run(process_update())
+        
         return "OK", 200
     except Exception as e:
         logger.error(f"❌ Ошибка в webhook: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return "Error", 500
 
 @app.route("/set_webhook")
 def set_webhook():
     """Вручную установить вебхук"""
     try:
+        import asyncio
         async def set():
             await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
             return f"✅ Webhook установлен на {WEBHOOK_URL}"
@@ -80,6 +92,7 @@ def set_webhook():
 def remove_webhook():
     """Удалить вебхук (для отладки)"""
     try:
+        import asyncio
         async def remove():
             await bot.delete_webhook(drop_pending_updates=True)
             return "✅ Webhook удалён"
