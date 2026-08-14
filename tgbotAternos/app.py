@@ -1,4 +1,4 @@
-[14.08.2026 17:36] l: import os
+import os
 import asyncio
 import threading
 import requests
@@ -107,7 +107,7 @@ async def start_command(message: types.Message):
     print(f"✅ Получена команда /start от {message.from_user.id}")
     keyboard = types.ReplyKeyboardMarkup(
         keyboard=[[types.KeyboardButton(text="🚀 Запустить сервер")]],
-[14.08.2026 17:36] l: resize_keyboard=True
+        resize_keyboard=True
     )
     await message.answer(
         "Привет! Нажми кнопку, чтобы запустить Minecraft сервер на Aternos.\n\n"
@@ -214,7 +214,7 @@ def set_webhook():
         async def set():
             await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
             return f"✅ Webhook установлен на {WEBHOOK_URL}"
-[14.08.2026 17:36] l: future = asyncio.run_coroutine_threadsafe(set(), loop)
+        future = asyncio.run_coroutine_threadsafe(set(), loop)
         result = future.result(timeout=30)
         print(result)
         return result
