@@ -114,7 +114,7 @@ async def start_server(message: types.Message):
         
         await message.answer("📋 Получаю список серверов...")
         servers = aternos_client.get_servers()
-if not servers:
+        if not servers:
             await message.answer("❌ Нет серверов на аккаунте.")
             return
         
