@@ -73,7 +73,7 @@ async def start_server(message: types.Message):
         await message.answer(f"❌ Ошибка: {str(e)}")
 
 # --- Flask для Render ---
-app = Flask(_name_)
+app = Flask(__name__)
 
 @app.route('/')
 def index():
@@ -87,7 +87,7 @@ def health():
 def run_bot():
     asyncio.run(dp.start_polling(bot))
 
-if _name_ == '_main_':
+if __name__ == '__main__':
     bot_thread = threading.Thread(target=run_bot)
     bot_thread.start()
     
