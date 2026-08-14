@@ -1,7 +1,8 @@
-import os
+[14.08.2026 17:36] l: import os
 import asyncio
 import threading
 import requests
+import re
 from flask import Flask, request
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -25,9 +26,9 @@ dp = Dispatcher()
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
-# --- Функции для работы с Aternos (упрощённая версия) ---
+# --- Класс для работы с Aternos (ИСПРАВЛЕННЫЙ) ---
 class AternosClient:
-    def init(self, login, password):
+    def init(self, login, password):  # ← Теперь правильно принимает аргументы!
         self.login = login
         self.password = password
         self.session = requests.Session()
@@ -36,6 +37,7 @@ class AternosClient:
         })
         self.authenticated = False
         self.server_id = None
+        print(f"🔧 Создан клиент Aternos для пользователя: {login}")
         
     def login(self):
         """Логин на Aternos"""
@@ -45,7 +47,6 @@ class AternosClient:
             resp = self.session.get('https://aternos.org/go/')
             
             # Ищем CSRF токен
-            import re
             csrf_match = re.search(r'name="csrf_token".*?value="(.*?)"', resp.text)
             csrf_token = csrf_match.group(1) if csrf_match else ''
             
@@ -71,11 +72,14 @@ class AternosClient:
     def get_servers(self):
         """Получить список серверов"""
         if not self.authenticated:
+            print("⚠️ Клиент не авторизован, сначала вызовите login()")
             return []
         try:
             resp = self.session.get('https://aternos.org/panel/ajax/servers/')
             data = resp.json()
-            return data.get('servers', [])
+            servers = data.get('servers', [])
+            print(f"📋 Найдено серверов: {len(servers)}")
+            return servers
         except Exception as e:
             print(f"❌ Ошибка получения серверов: {e}")
             return []
@@ -83,9 +87,12 @@ class AternosClient:
     def start_server(self, server_id):
         """Запустить сервер"""
         if not self.authenticated:
+            print("⚠️ Клиент не авторизован, сначала вызовите login()")
             return False
         try:
+            print(f"🚀 Отправка запроса на запуск сервера {server_id}...")
             resp = self.session.get(f'https://aternos.org/panel/ajax/start/{server_id}/')
+            print(f"📊 Статус ответа: {resp.status_code}")
             return resp.status_code == 200
         except Exception as e:
             print(f"❌ Ошибка запуска: {e}")
@@ -100,7 +107,7 @@ async def start_command(message: types.Message):
     print(f"✅ Получена команда /start от {message.from_user.id}")
     keyboard = types.ReplyKeyboardMarkup(
         keyboard=[[types.KeyboardButton(text="🚀 Запустить сервер")]],
-        resize_keyboard=True
+[14.08.2026 17:36] l: resize_keyboard=True
     )
     await message.answer(
         "Привет! Нажми кнопку, чтобы запустить Minecraft сервер на Aternos.\n\n"
@@ -115,19 +122,19 @@ async def start_server(message: types.Message):
     if not ATERNOS_LOGIN or not ATERNOS_PASS:
         await message.answer("⚠️ Ошибка: логин или пароль от Aternos не настроены в переменных окружения.")
         return
-        await message.answer("🔄 Подключаюсь к Aternos... Это может занять до 30 секунд.")
-        print(f"🚀 Пользователь {message.from_user.id} запросил запуск сервера")
+
+    await message.answer("🔄 Подключаюсь к Aternos... Это может занять до 30 секунд.")
+    print(f"🚀 Пользователь {message.from_user.id} запросил запуск сервера")
 
     try:
         # Создаём клиент если его нет
         if aternos_client is None:
+            print("🔧 Создаю новый клиент Aternos...")
             aternos_client = AternosClient(ATERNOS_LOGIN, ATERNOS_PASS)
-            if not aternos_client.login():
-                await message.answer("❌ Не удалось войти в Aternos. Проверьте логин и пароль.")
-                return
-        
+            
         # Если клиент не авторизован, пробуем залогиниться
         if not aternos_client.authenticated:
+            await message.answer("🔐 Вхожу в Aternos...")
             if not aternos_client.login():
                 await message.answer("❌ Не удалось войти в Aternos. Проверьте логин и пароль.")
                 return
@@ -207,8 +214,7 @@ def set_webhook():
         async def set():
             await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
             return f"✅ Webhook установлен на {WEBHOOK_URL}"
-        
-        future = asyncio.run_coroutine_threadsafe(set(), loop)
+[14.08.2026 17:36] l: future = asyncio.run_coroutine_threadsafe(set(), loop)
         result = future.result(timeout=30)
         print(result)
         return result
@@ -230,6 +236,7 @@ def remove_webhook():
         return result
     except Exception as e:
         return f"❌ Ошибка: {e}"
+
 @app.route("/debug")
 def debug():
     """Проверка статуса Aternos"""
