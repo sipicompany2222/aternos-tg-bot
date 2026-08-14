@@ -1,14 +1,9 @@
 import os
-import sys
 import asyncio
-import logging
+import threading
 from flask import Flask, request
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-
-# --- Настройка логирования (исправленная версия) ---
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # --- Конфигурация ---
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -21,6 +16,10 @@ WEBHOOK_URL = BASE_URL + WEBHOOK_PATH
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+
+# Создаём цикл событий для всего приложения
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
 
 # --- Обработчики команд ---
 @dp.message(Command("start"))
@@ -57,10 +56,12 @@ def webhook():
         
         update = types.Update(**update_data)
         
-        async def process_update():
-            await dp.feed_update(bot, update)
-        
-        asyncio.run(process_update())
+        # Используем существующий цикл событий
+        future = asyncio.run_coroutine_threadsafe(
+            dp.feed_update(bot, update),
+            loop
+        )
+        future.result(timeout=30)  # Ждём результат не более 30 секунд
         
         return "OK", 200
     except Exception as e:
@@ -77,7 +78,9 @@ def set_webhook():
             await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
             return f"✅ Webhook установлен на {WEBHOOK_URL}"
         
-        result = asyncio.run(set())
+        # Используем существующий цикл
+        future = asyncio.run_coroutine_threadsafe(set(), loop)
+        result = future.result(timeout=30)
         print(result)
         return result
     except Exception as e:
@@ -92,7 +95,8 @@ def remove_webhook():
             await bot.delete_webhook(drop_pending_updates=True)
             return "✅ Webhook удалён"
         
-        result = asyncio.run(remove())
+        future = asyncio.run_coroutine_threadsafe(remove(), loop)
+        result = future.result(timeout=30)
         print(result)
         return result
     except Exception as e:
@@ -101,5 +105,13 @@ def remove_webhook():
 # --- Запуск ---
 if __name__ == "__main__":
     print(f"🚀 Запуск бота с webhook: {WEBHOOK_URL}")
+    
+    # Запускаем цикл событий в фоновом потоке
+    def run_loop():
+        loop.run_forever()
+    
+    thread = threading.Thread(target=run_loop, daemon=True)
+    thread.start()
+    
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
