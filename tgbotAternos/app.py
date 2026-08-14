@@ -1,95 +1,97 @@
 import os
 import asyncio
-import threading
-from flask import Flask
+import logging
+from flask import Flask, request, jsonify
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aternos_api import AternosAPI
+
+# --- Настройка логирования ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # --- Конфигурация ---
-BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-if not BOT_TOKEN:
+TOKEN = os.environ.get("TELEGRAM_TOKEN")
+if not TOKEN:
     raise ValueError("TELEGRAM_TOKEN не найден!")
 
-ATERNOS_LOGIN = os.environ.get("ATERNOS_LOGIN")
-ATERNOS_PASS = os.environ.get("ATERNOS_PASS")
+# URL вашего сервиса (замените на свой, если нужно)
+BASE_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://aternos-tg-bot-8n19.onrender.com")
+WEBHOOK_PATH = f"/webhook/{TOKEN}"
+WEBHOOK_URL = BASE_URL + WEBHOOK_PATH
 
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=TOKEN)
 dp = Dispatcher()
-
-# Глобальная переменная для хранения сессии Aternos
-aternos_session = None
 
 # --- Обработчики команд ---
 @dp.message(Command("start"))
 async def start_command(message: types.Message):
+    logger.info(f"✅ Получена команда /start от {message.from_user.id}")
     keyboard = types.ReplyKeyboardMarkup(
         keyboard=[[types.KeyboardButton(text="🚀 Запустить сервер")]],
         resize_keyboard=True
     )
     await message.answer("Привет! Нажми кнопку, чтобы запустить Minecraft сервер на Aternos.", reply_markup=keyboard)
 
-@dp.message(lambda message: message.text == "🚀 Запустить сервер")
-async def start_server(message: types.Message):
-    global aternos_session
-    
-    if not ATERNOS_LOGIN or not ATERNOS_PASS:
-        await message.answer("⚠️ Ошибка: логин или пароль от Aternos не настроены.")
-        return
+@dp.message()
+async def echo_all(message: types.Message):
+    logger.info(f"📩 Получено сообщение: {message.text} от {message.from_user.id}")
+    await message.answer(f"✅ Бот работает! Вы написали: {message.text}")
 
-    await message.answer("🔄 Подключаюсь к Aternos...")
-
-    try:
-        # Создаём сессию, если её нет
-        if aternos_session is None:
-            aternos_session = AternosAPI(ATERNOS_LOGIN, ATERNOS_PASS)
-            
-        # Логинимся
-        if not aternos_session.authenticated:
-            if not aternos_session.login():
-                await message.answer("❌ Не удалось войти в Aternos. Проверьте логин и пароль.")
-                return
-        
-        # Получаем серверы
-        servers = aternos_session.get_servers()
-        if not servers:
-            await message.answer("❌ У вас нет серверов на этом аккаунте Aternos.")
-            return
-        
-        # Берём первый сервер
-        server = servers[0]
-        server_id = server.get("id")
-        server_name = server.get("name", "Без названия")
-        
-        await message.answer(f"🔄 Запускаю сервер '{server_name}'...")
-        
-        # Запускаем
-        if aternos_session.start_server(server_id):
-            await message.answer(f"✅ Сервер '{server_name}' запускается! Статус: {aternos_session.get_server_status(server_id)}")
-        else:
-            await message.answer(f"❌ Не удалось запустить сервер. Возможно, он уже запущен.")
-            
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {str(e)}")
-
-# --- Flask для Render ---
+# --- Flask приложение ---
 app = Flask(__name__)
 
-@app.route('/')
+@app.route("/")
 def index():
-    return "Bot is running!"
+    return "Bot is running with Webhook!"
 
-@app.route('/health')
+@app.route("/health")
 def health():
     return "OK"
 
-# --- Запуск бота ---
-def run_bot():
-    asyncio.run(dp.start_polling(bot))
+@app.route(WEBHOOK_PATH, methods=["POST"])
+async def webhook():
+    """Telegram отправляет обновления сюда"""
+    try:
+        update_data = await request.get_json()
+        logger.info(f"📨 Получено обновление от Telegram")
+        update = types.Update(**update_data)
+        await dp.feed_update(bot, update)
+        return "OK", 200
+    except Exception as e:
+        logger.error(f"❌ Ошибка в webhook: {e}")
+        return "Error", 500
 
-if __name__ == '__main__':
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.start()
-    
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+@app.route("/set_webhook")
+def set_webhook():
+    """Вручную установить вебхук"""
+    try:
+        async def set():
+            await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
+            return f"✅ Webhook установлен на {WEBHOOK_URL}"
+        
+        result = asyncio.run(set())
+        logger.info(result)
+        return result
+    except Exception as e:
+        logger.error(f"❌ Ошибка установки webhook: {e}")
+        return f"❌ Ошибка: {e}"
+
+@app.route("/remove_webhook")
+def remove_webhook():
+    """Удалить вебхук (для отладки)"""
+    try:
+        async def remove():
+            await bot.delete_webhook(drop_pending_updates=True)
+            return "✅ Webhook удалён"
+        
+        result = asyncio.run(remove())
+        logger.info(result)
+        return result
+    except Exception as e:
+        return f"❌ Ошибка: {e}"
+
+# --- Запуск ---
+if __name__ == "__main__":
+    logger.info(f"🚀 Запуск бота с webhook: {WEBHOOK_URL}")
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
