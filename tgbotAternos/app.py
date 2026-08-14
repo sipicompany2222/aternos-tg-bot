@@ -73,7 +73,7 @@ async def start_server(message: types.Message):
         await message.answer(f"❌ Ошибка: {str(e)}")
 
 # --- Flask для Render ---
-app = Flask(name)
+app = Flask(__name__)
 
 @app.route('/')
 def index():
